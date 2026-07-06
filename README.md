@@ -5,7 +5,7 @@
 
 ## The Story Behind the Code
 
-In the depths of the Matrix, the Architect sits beyond the simulation, surrounded by flickering screens, the Architect oversees the perfect simulation. 
+In the depths of the Matrix, the Architect sits beyond the simulation, surrounded by flickering screens, the Architect oversees the perfect creation. 
 
 On another side in reality, Tank is watching the code flowning, but something's wrong, it's too chaotic, too unreadable. He's been asking for a better version, one where the characters are clear, where the symbols are decipherable, where the data flows in perfect harmony.
 
