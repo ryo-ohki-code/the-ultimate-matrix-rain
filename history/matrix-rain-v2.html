@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Rain Effect - Two Layers</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #000;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', monospace;
+            color: #0f0;
+        }
+
+        #matrix-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #matrix-canvas,
+        #matrix-canvas-layer2,
+        #matrix-canvas-layer3 {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #matrix-canvas {
+            filter: blur(0.7px) contrast(1.5) brightness(2);
+            background: transparent;
+        }
+
+        #matrix-canvas-layer2 {
+            filter: blur(0.9px) contrast(1.5) brightness(2);
+            background: transparent;
+        }
+
+        #matrix-canvas-layer3 {
+            filter: blur(1px) contrast(0.8) brightness(2);
+            opacity: 0.4;
+            background: transparent;
+        }
+
+        #matrix-canvas-layer4 {
+            filter: blur(14px) contrast(1) brightness(2);
+            opacity: 0.4;
+            background: transparent;
+        }
+
+        .title {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 10;
+            text-shadow: 0 0 10px #0f0;
+            animation: pulse 2s infinite;
+        }
+
+        .title h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            letter-spacing: 0.3rem;
+        }
+
+        .title p {
+            font-size: 1.2rem;
+            opacity: 0.8;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 10;
+            background: rgba(0, 20, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 20px;
+            border: 1px solid #0f0;
+        }
+
+        .control-btn {
+            background: transparent;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 8px 15px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .control-btn:hover {
+            background: rgba(0, 255, 0, 0.2);
+            box-shadow: 0 0 10px #0f0;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 0.7;
+            }
+
+            50% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0.7;
+            }
+        }
+
+        .footer {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            font-size: 0.8rem;
+            opacity: 0.6;
+            z-index: 10;
+        }
+
+        .crt-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 20;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%,
+                    rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg,
+                    rgba(255, 0, 0, 0.06),
+                    rgba(0, 255, 0, 0.02),
+                    rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 6px 100%;
+            box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.9);
+        }
+
+        /* Animation de scintillement CRT */
+        .crt-overlay::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: rgba(18, 16, 16, 0.1);
+            opacity: 0;
+            z-index: 2;
+            pointer-events: none;
+            animation: flicker 0.15s infinite;
+        }
+
+        @keyframes flicker {
+            0% {
+                opacity: 0.02;
+            }
+
+            50% {
+                opacity: 0.05;
+            }
+
+            100% {
+                opacity: 0.02;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="matrix-container">
+        <div class="crt-overlay"></div>
+        <canvas id="matrix-canvas"></canvas>
+        <canvas id="matrix-canvas-layer2"></canvas>
+        <canvas id="matrix-canvas-layer3"></canvas>
+        <canvas id="matrix-canvas-layer4"></canvas>
+        <div class="title">
+            <h1>MATRIX RAIN</h1>
+
+            <h3>By Ryo Ohki Code</h3>
+        </div>
+        <!-- <div class="controls">
+            <button class="control-btn" id="speed-up">Speed Up</button>
+            <button class="control-btn" id="speed-down">Slow Down</button>
+            <button class="control-btn" id="density-up">More Density</button>
+            <button class="control-btn" id="density-down">Less Density</button>
+        </div> -->
+        <div class="footer">
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const config = {
+            // canvas1: {
+            //     fontSize: 30,
+            //     columns: 100,
+            // },
+            canvas2: {
+                fontSize: 20,
+                columns: 100,
+            },
+            canvas3: {
+                fontSize: 40,
+                columns: 100,
+            },
+            canvas4: {
+                fontSize: 180,
+                columns: 100,
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Matrix characters - Katakana, Latin, and symbols
+            const chars = "アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            const charArray = chars.split('');
+
+
+            // const canvas1 = document.getElementById('matrix-canvas');
+            // const ctx = canvas1.getContext('2d');
+            // canvas1.width = window.innerWidth;
+            // canvas1.height = window.innerHeight;
+            // const fontSize1 = config.canvas1.fontSize;
+            // const columns1 = config.canvas1.columns;
+            // const drops1 = [];
+
+            // for (let i = Math.floor(Math.random() * -100); i < columns1; i++) {
+            //     drops1[i] = Math.floor(Math.random() * -100);
+            // }
+
+
+            const canvas2 = document.getElementById('matrix-canvas-layer2');
+            const ctx2 = canvas2.getContext('2d');
+            canvas2.width = window.innerWidth;
+            canvas2.height = window.innerHeight;
+            const fontSize2 = config.canvas2.fontSize;
+            const columns2 = config.canvas2.columns;
+            const drops2 = [];
+            for (let i = Math.floor(Math.random() * -100); i < columns2; i++) {
+                drops2[i] = Math.floor(Math.random() * -100);
+            }
+
+
+            const canvas3 = document.getElementById('matrix-canvas-layer3');
+            const ctx3 = canvas3.getContext('2d');
+            canvas3.width = window.innerWidth;
+            canvas3.height = window.innerHeight;
+            const fontSize3 = config.canvas3.fontSize;
+            const columns3 = config.canvas3.columns;
+            const drops3 = [];
+
+            for (let i = Math.floor(Math.random() * -100); i < columns3; i++) {
+                drops3[i] = Math.floor(Math.random() * -100);
+            }
+
+
+            const canvas4 = document.getElementById('matrix-canvas-layer4');
+            const ctx4 = canvas4.getContext('2d');
+            // Set canvas to full window size
+            canvas4.width = window.innerWidth;
+            canvas4.height = window.innerHeight;
+            const fontSize4 = config.canvas4.fontSize;
+            const columns4 = config.canvas4.columns;
+            const drops4 = [];
+
+            for (let i = Math.floor(Math.random() * -100); i < columns4; i++) {
+                drops4[i] = Math.floor(Math.random() * -100);
+            }
+
+
+
+
+            // Animation variables
+            let speed = 5;
+            let density = 0.99;
+            let animationId;
+
+            // Draw function
+            function draw() {
+                ctx2.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                ctx2.fillRect(0, 0, canvas2.width, canvas2.height);
+                // Draw second layer (34px font)
+                ctx2.font = `${fontSize2}px 'Courier New', monospace`;
+
+                for (let i = 0; i < drops2.length; i++) {
+                    const text = charArray[Math.floor(Math.random() * charArray.length)];
+                    ctx2.fillStyle = `rgba(0, 255, 0, ${0.2 + Math.random() * 0.5})`;
+                    ctx2.fillText(text, i * fontSize2, drops2[i] * fontSize2);
+
+                    // Move drops down
+                    drops2[i]++;
+
+                    // Reset drops that go off screen
+                    if (drops2[i] * fontSize2 > canvas2.height && Math.random() > density) {
+                        drops2[i] = 0;
+                    }
+                }
+
+                ctx3.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                ctx3.fillRect(0, 0, canvas3.width, canvas3.height);
+                // Draw third layer 
+                ctx3.font = `${fontSize3}px 'Courier New', monospace`;
+
+                for (let i = 0; i < drops3.length; i++) {
+                    const text = charArray[Math.floor(Math.random() * charArray.length)];
+                    ctx3.fillStyle = `rgba(0, 255, 0, ${0.1 + Math.random() * 0.4})`;
+                    ctx3.fillText(text, i * fontSize3, drops3[i] * fontSize3);
+
+                    // Move drops down
+                    drops3[i]++;
+
+                    // Reset drops that go off screen
+                    if (drops3[i] * fontSize3 > canvas3.height && Math.random() > density) {
+                        drops3[i] = 0;
+                    }
+                }
+
+
+
+                ctx4.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                ctx4.fillRect(0, 0, canvas4.width, canvas4.height);
+                // Draw third layer 
+                ctx4.font = `${fontSize4}px 'Courier New', monospace`;
+
+                for (let i = 0; i < drops4.length; i++) {
+                    const text = charArray[Math.floor(Math.random() * charArray.length)];
+                    ctx4.fillStyle = `rgba(0, 255, 0, ${0.1 + Math.random() * 0.4})`;
+                    ctx4.fillText(text, i * fontSize4, drops4[i] * fontSize4);
+
+                    // Move drops down
+                    drops4[i]++;
+
+                    // Reset drops that go off screen
+                    if (drops4[i] * fontSize4 > canvas4.height && Math.random() > density) {
+                        drops4[i] = 0;
+                    }
+                }
+            }
+
+            // Animation loop
+            function animate() {
+                draw();
+                animationId = requestAnimationFrame(animate);
+            }
+
+            // Start animation
+            animate();
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                // canvas1.width = window.innerWidth;
+                // canvas1.height = window.innerHeight;
+                // const newColumns1 = config.canvas1.columns;
+
+                // // Adjust drops arrays
+                // if (newColumns1 > columns1) {
+                //     for (let i = columns1; i < newColumns1; i++) {
+                //         drops1[i] = Math.floor(Math.random() * -100);
+                //     }
+                // }
+
+
+                canvas2.width = window.innerWidth;
+                canvas2.height = window.innerHeight;
+                const newColumns2 = config.canvas2.columns;
+
+                if (newColumns2 > drops2.length) {
+                    // Add new columns with random start positions
+                    for (let i = drops2.length; i < newColumns2; i++) {
+                        drops2[i] = Math.floor(Math.random() * -100);
+                    }
+                } else if (newColumns2 < drops2.length) {
+                    // Remove excess columns
+                    drops2.length = newColumns2;
+                }
+
+
+                canvas3.width = window.innerWidth;
+                canvas3.height = window.innerHeight;
+                const newColumns3 = config.canvas3.columns;
+
+
+
+                if (newColumns3 > drops3.length) {
+                    // Add new columns with random start positions
+                    for (let i = drops3.length; i < newColumns3; i++) {
+                        drops3[i] = Math.floor(Math.random() * -100);
+                    }
+                } else if (newColumns3 < drops3.length) {
+                    // Remove excess columns
+                    drops3.length = newColumns3;
+                }
+
+                // Recalculate columns
+                // const newColumns1 = Math.floor(window.innerWidth / fontSize1);
+                // const newColumns2 = Math.floor(window.innerWidth / fontSize2);
+                // const newColumns3 = Math.floor(window.innerWidth / fontSize3);
+
+                canvas4.width = window.innerWidth;
+                canvas4.height = window.innerHeight;
+                const newColumns4 = config.canvas4.columns;
+                if (newColumns4 > drops4.length) {
+                    // Add new columns with random start positions
+                    for (let i = drops4.length; i < newColumns4; i++) {
+                        drops4[i] = Math.floor(Math.random() * -100);
+                    }
+                }
+            });
+
+            // Control buttons
+            document.getElementById('speed-up').addEventListener('click', () => {
+                speed = Math.min(speed + 1, 20);
+            });
+
+            document.getElementById('speed-down').addEventListener('click', () => {
+                speed = Math.max(speed - 1, 1);
+            });
+
+            document.getElementById('density-up').addEventListener('click', () => {
+                density = Math.max(density - 0.1, 0.1);
+            });
+
+            document.getElementById('density-down').addEventListener('click', () => {
+                density = Math.min(density + 0.1, 1);
+            });
+
+            // Mouse interaction
+            // canvas3.addEventListener('mousemove', (e) => {
+            //     const rect = canvas3.getBoundingClientRect();
+            //     const x = e.clientX - rect.left;
+            //     const y = e.clientY - rect.top;
+
+            //     // Draw ripple effect
+            //     ctx3.beginPath();
+            //     ctx3.arc(x, y, 20, 0, Math.PI * 2);
+            //     ctx3.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+            //     ctx3.lineWidth = 2;
+            //     ctx3.stroke();
+            // });
+        });
+    </script>
+</body>
+
+</html>
