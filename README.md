@@ -7,7 +7,7 @@
 
 In the depths of the Matrix, the Architect sits beyond the simulation, surrounded by flickering screens, the Architect oversees the perfect creation. 
 
-On another side in reality, Tank is watching the code flowning, but something's wrong, it's too chaotic, too unreadable. He's been asking for a better version, one where the characters are clear, where the symbols are decipherable, where the data flows in perfect harmony.
+On another side in reality, Tank is watching the code flowning, but something's wrong, it's too chaotic, too unreadable. He's been asking for a better version to the Rebels Operator Division for a long time, one where the characters are clear, where the symbols are decipherable, where the data flows in perfect harmony.
 
 So we had an idea. We've decrypted the Architect's secret: the Matrix isn't meant to be read in cerebral pain, it's meant to be experienced like art. So we've created **The Ultimate Matrix Rain**, a 2.5D WebGL masterpiece that lets you *see* the code, *feel* the glitch, and *understand* the chaos.
 
@@ -45,6 +45,9 @@ new MatrixRain('matrix1', {
 
 ### Parameter Descriptions
 
+This is the operators controls everything you need to read the matrix without pain:
+
+
 | Parameter         | Description |
 |------------------|-------------|
 | `layers`         | Number of layers in the Matrix rain (max 11). More layers = more depth. |
@@ -60,6 +63,7 @@ new MatrixRain('matrix1', {
 | `bloomStrength`  | Intensity of the glow effect. |
 | `bloomRadius`    | Radius of the bloom effect. |
 | `bloomThreshold` | Threshold for the bloom effect to kick in. |
+|`enableMoveFX` / `enableClickFX` | true by default |
 
 
 ## The Architecture Secret
@@ -81,3 +85,8 @@ So, what’s the secret? It’s not just about reading the code—it’s about f
 ## The Final Thought
 
 The Matrix is not a place. It’s a system. We’ve built an experience that shows it for what it really is: a beautiful, chaotic, and deeply immersive digital reality.
+
+
+## Licence
+
+GPL-3.0 license
