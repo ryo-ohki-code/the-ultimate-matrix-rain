@@ -87,6 +87,16 @@ So, what’s the secret? It’s not just about reading the code—it’s about f
 The Matrix is not a place. It’s a system. We’ve built an experience that shows it for what it really is: a beautiful, chaotic, and deeply immersive digital reality.
 
 
+## Author note
+
+I made a complete pack with screensaver and shadertoy :
+- For sceensaver see the `screensaver/` dir.
+- [Shadertoy Pixel Rain](https://www.shadertoy.com/view/Nfc3zN)
+- [Shadertoy Rain](https://www.shadertoy.com/view/sc33R4)
+
+Linux screen saver is in final testing and coming soon.
+
+
 ## Licence
 
 GPL-3.0 license
