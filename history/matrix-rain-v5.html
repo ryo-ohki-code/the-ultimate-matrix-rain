@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THE ULTIMATE MATRIX RAIN</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Courier New', monospace;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        #matrix1 {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        #boot-sequence {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #0f0;
+            font-size: 14px;
+            text-align: center;
+            z-index: 100;
+            transition: opacity 0.3s ease-out;
+            pointer-events: none;
+            text-shadow: 0 0 5px #0f0;
+        }
+
+        .overlay {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(0, 255, 100, 0.5);
+            font-size: 12px;
+            z-index: 10;
+            text-align: right;
+            pointer-events: none;
+        }
+
+        .scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+            background-size: 100% 4px;
+            z-index: 20;
+            pointer-events: none;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <div id="matrix1"></div>
+
+    <div class="scanlines"></div>
+    <div id="boot-sequence">MATRIX ONLINE<br>[ DOUBLE-TAP TO WARP ]</div>
+    <div class="overlay">
+        THE ULTIMATE MATRIX RAIN<br>
+        RYO OHKI CODE<br>
+        RENDER: 2.5D WEBGL
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        class MatrixRain {
+            constructor(containerId, options = {}) {
+                this.container = document.getElementById(containerId);
+                if (!this.container) throw new Error(`Container #${containerId} not found.`);
+
+                this.config = {
+                    layers: 8,
+                    volumeHeight: 1200,
+                    frontLayerSize: 250.0,
+                    sizeRatio: 0.6,
+                    frontOpacity: 0.1,
+                    matrixColor: 0x44ff88,
+                    tailLength: 25.0,
+                    tailParallax: 0.5,
+                    repositionDrops: true,
+                    charRerollRate: 1.0,
+                    enableMoveFX: true,
+                    enableClickFX: true,
+                    baseDropSpeed: 380.0,
+                    speedParallax: 45.0,
+                    bloomStrength: 2.2,
+                    bloomRadius: 0.5,
+                    bloomThreshold: 0.15,
+                    maxPanX: 85,
+                    maxPanY: 20,
+                    ...options
+                };
+
+                // Core State
+                this.mouse = new THREE.Vector2(0, 0);
+                this.targetMouse = new THREE.Vector2(0, 0);
+                this.lastTouch = null;
+
+                // Glitch & Warp State
+                this.glitchStrength = 0.0;
+                this.glitchWorldPos = new THREE.Vector2(0, 0);
+                this.lastClickTime = 0;
+                this.baseFOV = 60;
+                this.targetFOV = 60;
+
+                this.animate = this.animate.bind(this);
+                this.init();
+            }
+
+            init() {
+                this.width = this.container.clientWidth || window.innerWidth;
+                this.height = this.container.clientHeight || window.innerHeight;
+
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(this.baseFOV, this.width / this.height, 1, 2000);
+                this.camera.position.set(0, 0, 400);
+
+                const farthestDist = this.camera.position.z + (this.config.layers - 1) * 150;
+                const visibleHeightAtBack = 2 * farthestDist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+                this.config.volumeHeight = visibleHeightAtBack * 1.1 + this.config.maxPanY * 2;
+
+                this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+                this.renderer.setSize(this.width, this.height);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+                this.container.appendChild(this.renderer.domElement);
+
+                this.buildSystem();
+                this.setupPostProcessing();
+                this.bindEvents();
+
+                this.clock = new THREE.Clock();
+                this.prevTime = 0;
+                this.animate();
+            }
+
+            createTextAtlas() {
+                const canvas = document.createElement('canvas');
+                canvas.width = 1024; canvas.height = 1024;
+                const ctx = canvas.getContext('2d', { alpha: false });
+                const gridSize = 16;
+                const cellSize = canvas.width / gridSize;
+                const chars = 'ﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+                ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = `bold ${cellSize * 0.8}px monospace`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+                for (let i = 0; i < gridSize * gridSize; i++) {
+                    const x = (i % gridSize) * cellSize + cellSize / 2;
+                    const y = Math.floor(i / gridSize) * cellSize + cellSize / 2;
+                    ctx.fillText(chars[Math.floor(Math.random() * chars.length)], x, y);
+                }
+
+                const texture = new THREE.CanvasTexture(canvas);
+                texture.minFilter = THREE.LinearMipMapLinearFilter;
+                return texture;
+            }
+
+            buildSystem() {
+                this.material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTime: { value: 0.0 },
+                        uTexture: { value: this.createTextAtlas() },
+                        uVolumeHeight: { value: this.config.volumeHeight },
+                        uFrontOpacity: { value: this.config.frontOpacity },
+                        uGlitch: { value: 0.0 },
+                        uGlitchPos: { value: new THREE.Vector2(0, 0) },
+                        uTailLength: { value: this.config.tailLength },
+                        uSizeRatio: { value: this.config.sizeRatio },
+                        uTailParallax: { value: this.config.tailParallax },
+                        uColor: { value: new THREE.Color(this.config.matrixColor) },
+                        uSpreadBase: { value: this.width * 1.8 },
+                        uReposition: { value: this.config.repositionDrops ? 1.0 : 0.0 },
+                        uCharRerollRate: { value: this.config.charRerollRate }
+                    },
+                    vertexShader: `
+                        attribute float charIndex;
+                        attribute vec3 dropData; 
+                        attribute float aSize; 
+                        
+                        uniform float uTime;
+                        uniform float uGlitch;
+                        uniform vec2 uGlitchPos;
+                        uniform float uVolumeHeight;
+                        uniform float uSpreadBase;
+                        uniform float uReposition;
+                        uniform float uCharRerollRate;
+                        
+                        varying float vCharIndex;
+                        varying vec3 vDropData;
+                        varying vec3 vPos;
+                        varying float vGlitch;
+                        varying float vSize;
+                        
+                        void main() {
+                            float T = uTime * dropData.x + dropData.y;
+                            float lap = floor((T - uVolumeHeight * 0.5 + position.y) / uVolumeHeight);
+                            
+                            float phase = fract(sin(position.x * 0.913 + position.y * 0.527 + position.z * 0.311) * 43758.5453);
+                            float effLap = floor((lap + phase) * uCharRerollRate);
+                            float reroll = fract(sin(effLap * 12.9898 + position.x * 0.731 + position.y * 0.517) * 43758.5453);
+                            vCharIndex = mod(charIndex + floor(reroll * 256.0), 256.0);
+                            
+                            vec3 pos = position;
+                            float colSeed = position.x * 0.0173 + position.z * 0.31;
+                            float rerollX = fract(sin(dot(vec2(lap, colSeed), vec2(12.9898, 78.233))) * 43758.5453);
+                            float spread = uSpreadBase + dropData.z * 300.0;
+                            pos.x = mix(position.x, (rerollX - 0.5) * spread, uReposition);
+                            
+                            vDropData = dropData; 
+                            vPos = position;
+                            vSize = aSize;
+                            
+                            float d = distance(pos.xy, uGlitchPos);
+                            vGlitch = uGlitch * (0.2 + 0.8 * smoothstep(600.0, 0.0, d));
+                            
+                            float band = floor(position.y / 45.0);
+                            float tear = fract(sin(band * 91.7 + floor(uTime * 24.0) * 13.3) * 43758.5453) - 0.5;
+                            pos.x += tear * 90.0 * vGlitch;
+                            
+                            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                            gl_Position = projectionMatrix * mvPosition;
+                            gl_PointSize = aSize; 
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform sampler2D uTexture; 
+                        uniform float uTime; 
+                        uniform float uVolumeHeight;
+                        uniform float uFrontOpacity;
+                        uniform float uTailLength;
+                        uniform float uSizeRatio;
+                        uniform float uTailParallax;
+                        uniform vec3 uColor;
+                        
+                        varying float vCharIndex; 
+                        varying vec3 vDropData; 
+                        varying vec3 vPos;
+                        varying float vGlitch;
+                        varying float vSize;
+                        
+                        void main() {
+                            vec2 ptUV = gl_PointCoord; 
+                            float cols = 16.0; 
+                            float charIdx = vCharIndex;
+                            
+                            if (sin(uTime * 15.0 + vPos.x) > 0.95) {
+                                charIdx = mod(charIdx + floor(uTime * 30.0), 256.0);
+                            }
+                            
+                            if (vGlitch > 0.02) {
+                                float r = fract(sin(vPos.x * 12.9898 + vPos.y * 78.233) * 43758.5453);
+                                if (r < vGlitch) {
+                                    charIdx = mod(charIdx + floor(uTime * 120.0) + vPos.y, 256.0);
+                                }
+                            }
+
+                            float row = floor(charIdx / cols); 
+                            float col = mod(charIdx, cols);
+                            vec2 uv = vec2((col + ptUV.x) / cols, 1.0 - (row + ptUV.y) / cols);
+                            vec4 texColor = texture2D(uTexture, uv);
+                            
+                            if (texColor.r < 0.3) discard; 
+                            
+                            float speed = vDropData.x; 
+                            float offset = vDropData.y;
+                            float layer = vDropData.z;
+                            
+                            float headY = (uVolumeHeight / 2.0) - mod(uTime * speed + offset, uVolumeHeight);
+                            float dist = headY - vPos.y;
+                            if (dist < -50.0) dist += uVolumeHeight; 
+                            
+                            vec3 color = vec3(0.0); 
+                            float alpha = 0.0;
+                            
+                            // --- DYNAMIC TAIL MATH ---
+                            float tailBoost = pow(uSizeRatio, -layer * uTailParallax);
+                            float physicalTail = vSize * uTailLength * tailBoost;
+                            
+                            physicalTail = min(physicalTail, uVolumeHeight * 0.7);
+                            
+                            float bodyLength = physicalTail * 0.3;    // Bright body is 30% of the tail
+                            float headLength = vSize * 0.2;           // Head flash is a fraction of a character
+                            
+                            if (dist >= 0.0 && dist < physicalTail) {
+                                alpha = smoothstep(physicalTail, 0.0, dist);
+                                
+                                if (dist < headLength) { 
+                                    color = mix(uColor, vec3(1.0), 0.8) * 1.8; 
+                                } 
+                                else if (dist < bodyLength) { 
+                                    color = mix(uColor, uColor * 0.4, dist / bodyLength); 
+                                } 
+                                else { 
+                                    color = uColor * 0.15 * alpha; 
+                                }
+                            } else { 
+                                discard; 
+                            }
+                            
+                            if (layer < 0.5) { alpha *= uFrontOpacity; } 
+                            else { alpha *= (1.0 - (layer * 0.15)); }
+
+                            if (vGlitch > 0.02) {
+                                float flicker = step(0.5, fract(uTime * 18.0 + vPos.y * 0.02));
+                                color = mix(color, vec3(1.0, 0.25, 0.35) * 1.5, vGlitch * 0.6 * flicker);
+                                alpha = min(1.0, alpha + vGlitch * 0.3 * flicker);
+                            }
+
+                            gl_FragColor = vec4(color * texColor.r, alpha);
+                        }
+                    `,
+                    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+                });
+
+                let totalParticles = 0;
+                const layerData = [];
+
+                for (let layer = 0; layer < this.config.layers; layer++) {
+                    const pixelSize = this.config.frontLayerSize * Math.pow(this.config.sizeRatio, layer);
+                    const spreadX = this.width * 1.8 + (layer * 300);
+                    const cols = Math.max(5, Math.floor(spreadX / (pixelSize * 0.8)));
+                    const drops = Math.max(20, Math.floor(this.config.volumeHeight / (pixelSize * 0.8)));
+
+                    layerData.push({ layer, pixelSize, cols, drops, spreadX });
+                    totalParticles += (cols * drops);
+                }
+
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(totalParticles * 3);
+                const charIndices = new Float32Array(totalParticles);
+                const dropData = new Float32Array(totalParticles * 3);
+                const sizes = new Float32Array(totalParticles);
+
+                let idx = 0;
+
+                layerData.forEach(ld => {
+                    const z = -ld.layer * 150;
+                    const baseSpeed = Math.max(20.0, this.config.baseDropSpeed - (ld.layer * this.config.speedParallax));
+
+                    for (let col = 0; col < ld.cols; col++) {
+                        const x = (Math.random() - 0.5) * ld.spreadX;
+                        const speed = baseSpeed + (Math.random() * 25.0);
+                        const offset = Math.random() * 5000.0;
+
+                        for (let drop = 0; drop < ld.drops; drop++) {
+                            const y = (drop / ld.drops) * this.config.volumeHeight - (this.config.volumeHeight / 2);
+                            positions[idx * 3] = x;
+                            positions[idx * 3 + 1] = y;
+                            positions[idx * 3 + 2] = z;
+                            charIndices[idx] = Math.floor(Math.random() * 256);
+                            sizes[idx] = ld.pixelSize;
+                            dropData[idx * 3] = speed;
+                            dropData[idx * 3 + 1] = offset;
+                            dropData[idx * 3 + 2] = ld.layer;
+                            idx++;
+                        }
+                    }
+                });
+
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('charIndex', new THREE.BufferAttribute(charIndices, 1));
+                geometry.setAttribute('dropData', new THREE.BufferAttribute(dropData, 3));
+                geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+                this.scene.add(new THREE.Points(geometry, this.material));
+            }
+
+            setupPostProcessing() {
+                this.composer = new EffectComposer(this.renderer);
+                this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+                const bloomPass = new UnrealBloomPass(
+                    new THREE.Vector2(this.width, this.height),
+                    this.config.bloomStrength, this.config.bloomRadius, this.config.bloomThreshold
+                );
+                this.composer.addPass(bloomPass);
+            }
+
+            triggerGlitch(clientX, clientY) {
+                this.glitchStrength = 1.0;
+
+                // --- DOUBLE CLICK WARP DETECTOR ---
+                const now = performance.now();
+                if (now - this.lastClickTime < 350) {
+                    this.targetFOV = 25; // Trigger aggressive FOV tunnel warp
+                    setTimeout(() => { this.targetFOV = this.baseFOV; }, 400); // Auto-recover
+                }
+                this.lastClickTime = now;
+
+                // Project click to 3D space for local glitch shader
+                const rect = this.container.getBoundingClientRect();
+                const ndc = new THREE.Vector3(
+                    ((clientX - rect.left) / rect.width) * 2 - 1,
+                    -((clientY - rect.top) / rect.height) * 2 + 1,
+                    0.5
+                );
+
+                ndc.unproject(this.camera);
+                const dir = ndc.sub(this.camera.position).normalize();
+                const t = -this.camera.position.z / dir.z;
+
+                this.glitchWorldPos.set(
+                    this.camera.position.x + dir.x * t,
+                    this.camera.position.y + dir.y * t
+                );
+                this.material.uniforms.uGlitchPos.value.copy(this.glitchWorldPos);
+            }
+
+            bindEvents() {
+                window.addEventListener('resize', () => {
+                    this.width = this.container.clientWidth || window.innerWidth;
+                    this.height = this.container.clientHeight || window.innerHeight;
+
+                    this.camera.aspect = this.width / this.height;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(this.width, this.height);
+                    this.composer.setSize(this.width, this.height);
+
+                    this.material.uniforms.uSpreadBase.value = this.width * 1.8;
+                });
+
+                if (this.config.enableMoveFX) {
+                    this.container.addEventListener('mousemove', (event) => {
+                        const rect = this.container.getBoundingClientRect();
+                        const windowHalfX = rect.width / 2;
+                        const windowHalfY = rect.height / 2;
+
+                        let rawX = (event.clientX - rect.left - windowHalfX) * 0.15;
+                        let rawY = (event.clientY - rect.top - windowHalfY) * 0.15;
+
+                        this.targetMouse.x = Math.max(-this.config.maxPanX, Math.min(this.config.maxPanX, rawX));
+                        this.targetMouse.y = Math.max(-this.config.maxPanY, Math.min(this.config.maxPanY, rawY));
+                    });
+
+                    this.container.addEventListener('touchstart', (event) => {
+                        const t = event.touches[0];
+                        this.lastTouch = { x: t.clientX, y: t.clientY };
+                    }, { passive: false });
+
+                    this.container.addEventListener('touchmove', (event) => {
+                        event.preventDefault();
+                        if (!this.lastTouch) return;
+
+                        const t = event.touches[0];
+                        const dx = t.clientX - this.lastTouch.x;
+                        const dy = t.clientY - this.lastTouch.y;
+                        this.lastTouch = { x: t.clientX, y: t.clientY };
+
+                        this.targetMouse.x = Math.max(-this.config.maxPanX, Math.min(this.config.maxPanX, this.targetMouse.x - dx * 0.35));
+                        this.targetMouse.y = Math.max(-this.config.maxPanY, Math.min(this.config.maxPanY, this.targetMouse.y - dy * 0.35));
+                    }, { passive: false });
+
+                    this.container.addEventListener('touchend', () => { this.lastTouch = null; });
+                }
+
+                if (this.config.enableClickFX) {
+                    this.container.addEventListener('pointerdown', (event) => {
+                        this.triggerGlitch(event.clientX, event.clientY);
+                    });
+                }
+            }
+
+            animate() {
+                requestAnimationFrame(this.animate);
+
+                const elapsed = this.clock.getElapsedTime();
+                const delta = elapsed - this.prevTime;
+                this.prevTime = elapsed;
+                this.material.uniforms.uTime.value = elapsed;
+
+                // Glitch decay
+                if (this.glitchStrength > 0.0) {
+                    this.glitchStrength = Math.max(0.0, this.glitchStrength - delta * 2.2);
+                    this.material.uniforms.uGlitch.value = this.glitchStrength;
+                }
+
+                // --- SMOOTH FOV INTERPOLATION ---
+                if (Math.abs(this.camera.fov - this.targetFOV) > 0.1) {
+                    this.camera.fov += (this.targetFOV - this.camera.fov) * 0.12;
+                    this.camera.updateProjectionMatrix();
+                }
+
+                // Smooth camera sway
+                this.mouse.x += (this.targetMouse.x - this.mouse.x) * 0.05;
+                this.mouse.y += (this.targetMouse.y - this.mouse.y) * 0.05;
+
+                this.camera.position.x = this.mouse.x;
+                this.camera.position.y = -this.mouse.y;
+
+                this.camera.lookAt(this.scene.position);
+
+                this.composer.render();
+            }
+        }
+
+        setTimeout(() => {
+            const boot = document.getElementById('boot-sequence');
+            if (boot) { boot.style.opacity = 0; setTimeout(() => boot.remove(), 300); }
+        }, 1200);
+
+        // --- INSTANTIATE WITH CUSTOMIZABLE CONFIG ---
+        new MatrixRain('matrix1', {
+            layers: 8, //limit at 11
+            volumeHeight: 1200,
+            frontLayerSize: 250,
+            sizeRatio: 0.6,
+            frontOpacity: 0.1,
+            matrixColor: 0x19e88e, // ghost white "#3ff3ee3" , flash green 0x00ff44 , blue 0x0088ff, purple 0x6600cc, ice 0xee0f0, matrix green 0x00ff64
+            tailLength: 25,
+            tailParallax: 0.5,
+            baseDropSpeed: 380,
+            speedParallax: 45,
+            bloomStrength: 2.2,
+            bloomRadius: 0.5,
+            bloomThreshold: 0.15,
+        });
+
+    </script>
+</body>
+
+</html>
