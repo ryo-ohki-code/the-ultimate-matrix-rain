@@ -271,7 +271,7 @@
                             float cols = 16.0; 
                             float charIdx = vCharIndex;
                             
-                            if (sin(uTime * 15.0 + vPos.x) > 0.95) {
+                            if (sin(uTime * 15.0 + vPos.x) > 2) {
                                 charIdx = mod(charIdx + floor(uTime * 30.0), 256.0);
                             }
                             
