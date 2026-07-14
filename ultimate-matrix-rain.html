@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>THE ULTIMATE MATRIX RAIN</title>
+    <title>THE ULTIMATE MATRIX RAIN V6</title>
     <style>
         body {
             margin: 0;
@@ -76,9 +76,9 @@
     <div id="matrix1"></div>
 
     <div class="scanlines"></div>
-    <div id="boot-sequence">MATRIX ONLINE<br>[ DOUBLE-TAP TO WARP ]</div>
+    <div id="boot-sequence">LOADING MATRIX<br>[ DOUBLE-TAP TO WARP ]</div>
     <div class="overlay">
-        THE ULTIMATE MATRIX RAIN<br>
+        MATRIX RAIN V6<br>
         RYO OHKI CODE<br>
         RENDER: 2.5D WEBGL
     </div>
@@ -92,30 +92,65 @@
         class MatrixRain {
             constructor(containerId, options = {}) {
                 this.container = document.getElementById(containerId);
+
                 if (!this.container) throw new Error(`Container #${containerId} not found.`);
 
                 this.config = {
                     layers: 8,
                     volumeHeight: 1200,
-                    frontLayerSize: 250.0,
+                    frontLayerSize: 250,
                     sizeRatio: 0.6,
                     frontOpacity: 0.1,
                     matrixColor: 0x44ff88,
-                    tailLength: 25.0,
+                    tailLength: 25,
                     tailParallax: 0.5,
+                    tailFade: 1,
                     repositionDrops: true,
                     charRerollRate: 1.0,
                     enableMoveFX: true,
                     enableClickFX: true,
-                    baseDropSpeed: 380.0,
-                    speedParallax: 45.0,
+                    baseDropSpeed: 250,
+                    speedParallax: 45,
                     bloomStrength: 2.2,
                     bloomRadius: 0.5,
                     bloomThreshold: 0.15,
+                    bloomGradientSize: 0.6,
+
                     maxPanX: 85,
                     maxPanY: 20,
+
+                    errorRate: 0.001,
+                    errorRateGlitchingChar: 0.5,
+                    partialErrorRate: 0.0001,
+                    partialErrorSize: 0.4,
+                    errorColor: 0xff0000,
+
+                    decryptColor: 0xffffff,
+                    decryptStrength: 1.5,
+                    decryptMix: 0.8,
+                    decryptFlashSize: 0.2,
+                    decryptScrambleSize: 1.5,
+
+                    destructColor: 0xffffff,
+                    destructStrength: 1.8,
+                    destructMix: 0.8,
+                    destructFlashSize: 1.5,
+                    destructAlphaBoost: 0.8,
+
+                    layerRainPerc: 1,
+                    layerDensityRamp: 1,
+
+                    repulsionRadius: 20,
+                    repulsionDepth: 2.5,
                     ...options
                 };
+
+                if (options.gradientSize !== undefined && options.bloomGradientSize === undefined) {
+                    this.config.bloomGradientSize = options.gradientSize;
+                }
+
+                this.config.layerRainPerc = Math.min(1, Math.max(0, this.config.layerRainPerc));
+                this.config.layerDensityRamp = Math.min(1, Math.max(0, this.config.layerDensityRamp));
 
                 // Core State
                 this.mouse = new THREE.Vector2(0, 0);
@@ -198,12 +233,34 @@
                         uColor: { value: new THREE.Color(this.config.matrixColor) },
                         uSpreadBase: { value: this.width * 1.8 },
                         uReposition: { value: this.config.repositionDrops ? 1.0 : 0.0 },
-                        uCharRerollRate: { value: this.config.charRerollRate }
+                        uCharRerollRate: { value: this.config.charRerollRate },
+                        uMouseWorld: { value: new THREE.Vector2(0, 0) },
+                        uRepulsionRadius: { value: this.config.repulsionRadius },
+                        uRepulsionDepth: { value: this.config.repulsionDepth },
+                        uErrorRate: { value: this.config.errorRate },
+                        uErrorRateGlitchingChar: { value: this.config.errorRateGlitchingChar },
+                        uPartialErrorRate: { value: this.config.partialErrorRate },
+                        uPartialErrorSize: { value: this.config.partialErrorSize },
+                        uBloomGradientSize: { value: this.config.bloomGradientSize },
+                        uTailFade: { value: this.config.tailFade },
+                        uErrorColor: { value: new THREE.Color(this.config.errorColor) },
+                        uDecryptColor: { value: new THREE.Color(this.config.decryptColor) },
+                        uDecryptStrength: { value: this.config.decryptStrength },
+                        uDecryptMix: { value: this.config.decryptMix },
+                        uDecryptFlashSize: { value: this.config.decryptFlashSize },
+                        uDecryptScrambleSize: { value: this.config.decryptScrambleSize },
+                        uDestructColor: { value: new THREE.Color(this.config.destructColor) },
+                        uDestructStrength: { value: this.config.destructStrength },
+                        uDestructMix: { value: this.config.destructMix },
+                        uDestructFlashSize: { value: this.config.destructFlashSize },
+                        uDestructAlphaBoost: { value: this.config.destructAlphaBoost },
+                        uRainPerc: { value: this.config.layerRainPerc }
                     },
                     vertexShader: `
                         attribute float charIndex;
                         attribute vec3 dropData; 
                         attribute float aSize; 
+                        attribute vec2 aSlot;
                         
                         uniform float uTime;
                         uniform float uGlitch;
@@ -212,12 +269,17 @@
                         uniform float uSpreadBase;
                         uniform float uReposition;
                         uniform float uCharRerollRate;
+                        uniform vec2 uMouseWorld;
+                        uniform float uRepulsionRadius;
+                        uniform float uRepulsionDepth;
+                        uniform float uRainPerc;
                         
                         varying float vCharIndex;
                         varying vec3 vDropData;
                         varying vec3 vPos;
                         varying float vGlitch;
                         varying float vSize;
+                        varying float vActive;
                         
                         void main() {
                             float T = uTime * dropData.x + dropData.y;
@@ -232,12 +294,19 @@
                             float colSeed = position.x * 0.0173 + position.z * 0.31;
                             float rerollX = fract(sin(dot(vec2(lap, colSeed), vec2(12.9898, 78.233))) * 43758.5453);
                             float spread = uSpreadBase + dropData.z * 300.0;
-                            pos.x = mix(position.x, (rerollX - 0.5) * spread, uReposition);
+                            
+                            float slotW = spread / aSlot.y;
+                            float slotX = (aSlot.x + 0.5 + (rerollX - 0.5) * 0.7) * slotW - spread * 0.5;
+                            pos.x = mix(position.x, slotX, uReposition);
+                            
+                            float rainRoll = fract(sin(dot(vec2(lap, colSeed), vec2(45.164, 94.673))) * 43758.5453);
+                            vActive = step(rainRoll, uRainPerc);
                             
                             vDropData = dropData; 
                             vPos = position;
-                            vSize = aSize; // Link it
+                            vSize = aSize;
                             
+                            // 1. Click Glitch Logic
                             float d = distance(pos.xy, uGlitchPos);
                             vGlitch = uGlitch * (0.2 + 0.8 * smoothstep(600.0, 0.0, d));
                             
@@ -245,9 +314,21 @@
                             float tear = fract(sin(band * 91.7 + floor(uTime * 24.0) * 13.3) * 43758.5453) - 0.5;
                             pos.x += tear * 90.0 * vGlitch;
                             
+                            // 2. UPDATED: Depth-Aware Fluid Repulsion
+                            float layer = dropData.z;
+                            // Calculates a smooth fade: 1.0 at front layer, 0.0 at layer index > uRepulsionDepth
+                            float depthFactor = 1.0 - smoothstep(0.0, uRepulsionDepth, layer);
+                            
+                            float distToMouse = distance(pos.xy, uMouseWorld);
+                            // Multiply the original repulsion by the depth factor
+                            float repulsion = smoothstep(uRepulsionRadius, 0.0, distToMouse) * depthFactor;
+                            
+                            pos.x += sign(pos.x - uMouseWorld.x) * repulsion * 35.0;
+                            pos.y += sign(pos.y - uMouseWorld.y) * repulsion * 35.0;
+                            
                             vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
                             gl_Position = projectionMatrix * mvPosition;
-                            gl_PointSize = aSize; 
+                            gl_PointSize = aSize;
                         }
                     `,
                     fragmentShader: `
@@ -259,27 +340,85 @@
                         uniform float uSizeRatio;
                         uniform float uTailParallax;
                         uniform vec3 uColor;
-                        
+                        uniform vec3 uErrorColor;
+                        uniform float uErrorRate;
+                        uniform float uErrorRateGlitchingChar;
+                        uniform float uPartialErrorRate;
+                        uniform float uPartialErrorSize;
+                        uniform float uBloomGradientSize;
+                        uniform float uTailFade;
+                        uniform vec3 uDecryptColor;
+                        uniform float uDecryptStrength;
+                        uniform float uDecryptMix;
+                        uniform float uDecryptFlashSize;
+                        uniform float uDecryptScrambleSize;
+                        uniform vec3 uDestructColor;
+                        uniform float uDestructStrength;
+                        uniform float uDestructMix;
+                        uniform float uDestructFlashSize;
+                        uniform float uDestructAlphaBoost;
+
                         varying float vCharIndex; 
                         varying vec3 vDropData; 
                         varying vec3 vPos;
                         varying float vGlitch;
                         varying float vSize;
+                        varying float vActive;
                         
                         void main() {
+                            if (vActive < 0.5) discard;
                             vec2 ptUV = gl_PointCoord; 
                             float cols = 16.0; 
                             float charIdx = vCharIndex;
                             
-                            if (sin(uTime * 15.0 + vPos.x) > 2) {
-                                charIdx = mod(charIdx + floor(uTime * 30.0), 256.0);
+                            // Matrix Error Seeds
+                            float colSeed = fract(sin(vDropData.y * 12.9898) * 43758.5453);
+                            bool isTotalError = colSeed < uErrorRate;
+                            bool isPartialError = colSeed > uErrorRate && colSeed < (uErrorRate + uPartialErrorRate);
+                            float partialGlitch = 0.0;
+                            
+                            float speed = vDropData.x; 
+                            float offset = vDropData.y;
+                            float layer = vDropData.z;
+                            
+                            float headY = (uVolumeHeight / 2.0) - mod(uTime * speed + offset, uVolumeHeight);
+                            
+                            // Tail stretches UPWARDS above the head
+                            float dist = vPos.y - headY; 
+                            if (dist < -50.0) dist += uVolumeHeight; 
+                            
+                            float tailBoost = pow(uSizeRatio, -layer * uTailParallax);
+                            float physicalTail = vSize * uTailLength * tailBoost;
+                            physicalTail = min(physicalTail, uVolumeHeight * 0.7);
+                            
+                            // --- 1. DECRYPTING HEAD SCRAMBLE ---
+                            if (dist >= 0.0 && dist < vSize * uDecryptScrambleSize) {
+                                charIdx = mod(charIdx + floor(uTime * 60.0), 256.0);
                             }
+                            
+                            // 2. Matrix Errors
+                            if (isTotalError) {
+                                float charSeed = fract(sin(vPos.y * 12.9898 + colSeed * 78.233) * 43758.5453);
+                                if (charSeed < uErrorRateGlitchingChar) {
+                                    charIdx = mod(charIdx + floor(uTime * 80.0), 256.0);
+                                }
+                            }
+                            if (isPartialError) {
+                                float repairPulse = fract(uTime * 0.3 + colSeed * 10.0);
+                                float normDist = dist / physicalTail;
+                                if (abs(normDist - repairPulse) < (uPartialErrorSize * 0.5)) {
+                                    partialGlitch = 1.0;
+                                    charIdx = mod(charIdx + floor(uTime * 80.0), 256.0);
+                                }
+                            }
+
+                            // if (sin(uTime * 15.0 + vPos.x) > 0.95) {
+                            //     charIdx = mod(charIdx + floor(uTime * 30.0), 256.0);
+                            // }
                             
                             if (vGlitch > 0.02) {
                                 float r = fract(sin(vPos.x * 12.9898 + vPos.y * 78.233) * 43758.5453);
-                                if (r < vGlitch) {
-                                    charIdx = mod(charIdx + floor(uTime * 120.0) + vPos.y, 256.0);
-                                }
+                                if (r < vGlitch) { charIdx = mod(charIdx + floor(uTime * 120.0) + vPos.y, 256.0); }
                             }
 
                             float row = floor(charIdx / cols); 
@@ -289,37 +428,36 @@
                             
                             if (texColor.r < 0.3) discard; 
                             
-                            float speed = vDropData.x; 
-                            float offset = vDropData.y;
-                            float layer = vDropData.z;
-                            
-                            float headY = (uVolumeHeight / 2.0) - mod(uTime * speed + offset, uVolumeHeight);
-                            float dist = headY - vPos.y;
-                            if (dist < -50.0) dist += uVolumeHeight; 
-                            
+                            vec3 activeColor = uColor;
+                            if (isTotalError) activeColor = uErrorColor;
+                            if (partialGlitch > 0.0) activeColor = mix(uColor, uErrorColor, 0.85);
+
                             vec3 color = vec3(0.0); 
                             float alpha = 0.0;
                             
-                            // --- DYNAMIC TAIL MATH ---
-                            float tailBoost = pow(uSizeRatio, -layer * uTailParallax);
-                            float physicalTail = vSize * uTailLength * tailBoost;
-                            
-                            physicalTail = min(physicalTail, uVolumeHeight * 0.7);
-                            
-                            float bodyLength = physicalTail * 0.3;    // Bright body is 30% of the tail
-                            float headLength = vSize * 0.2;           // Head flash is a fraction of a character
+                            float headLength = vSize * uDecryptFlashSize;           
+                            float destroyLength = vSize * uDestructFlashSize;
                             
                             if (dist >= 0.0 && dist < physicalTail) {
-                                alpha = smoothstep(physicalTail, 0.0, dist);
+                                float solidAlpha = smoothstep(physicalTail, physicalTail - (vSize * 2.0), dist);
+                                float fadedAlpha = smoothstep(physicalTail, 0.0, dist);
+                                alpha = mix(solidAlpha, fadedAlpha, uTailFade);
                                 
                                 if (dist < headLength) { 
-                                    color = mix(uColor, vec3(1.0), 0.8) * 1.8; 
-                                } 
-                                else if (dist < bodyLength) { 
-                                    color = mix(uColor, uColor * 0.4, dist / bodyLength); 
+                                    color = mix(activeColor, uDecryptColor, uDecryptMix) * uDecryptStrength; 
                                 } 
                                 else { 
-                                    color = uColor * 0.15 * alpha; 
+                                    float fadeFactor = clamp(dist / (physicalTail * uBloomGradientSize), 0.0, 1.0);
+                                    color = mix(activeColor, activeColor * 0.15, fadeFactor); 
+                                }
+                                
+                                float tailEndDist = physicalTail - dist;
+                                if (tailEndDist > 0.0 && tailEndDist < destroyLength) {
+                                    float destroyFade = 1.0 - (tailEndDist / destroyLength);
+                                    vec3 flashColor = mix(activeColor, uDestructColor, uDestructMix) * uDestructStrength;
+                                    color = mix(color, flashColor, destroyFade * destroyFade);
+                                    
+                                    alpha = max(alpha, destroyFade * uDestructAlphaBoost);
                                 }
                             } else { 
                                 discard; 
@@ -343,11 +481,23 @@
                 let totalParticles = 0;
                 const layerData = [];
 
+                const colsFlat = Math.max(5, Math.floor((this.width * 1.8) / (this.config.frontLayerSize * 0.8)));
+                const rampT = this.config.layerDensityRamp;
+
                 for (let layer = 0; layer < this.config.layers; layer++) {
                     const pixelSize = this.config.frontLayerSize * Math.pow(this.config.sizeRatio, layer);
                     const spreadX = this.width * 1.8 + (layer * 300);
-                    const cols = Math.max(5, Math.floor(spreadX / (pixelSize * 0.8)));
+                    let cols = Math.max(5, Math.floor(spreadX / (pixelSize * 0.8)));
                     const drops = Math.max(20, Math.floor(this.config.volumeHeight / (pixelSize * 0.8)));
+
+                    if (layer === this.config.layers - 1) {
+                        const depth = 400 + layer * 150;
+                        const worldPerPx = (2 * depth * Math.tan(THREE.MathUtils.degToRad(this.baseFOV / 2))) / this.height;
+                        const glyphWorld = pixelSize * worldPerPx;
+                        cols = Math.max(cols, Math.ceil(spreadX / (glyphWorld * 0.9)));
+                    }
+
+                    cols = Math.max(5, Math.round(colsFlat * Math.pow(cols / colsFlat, rampT)));
 
                     layerData.push({ layer, pixelSize, cols, drops, spreadX });
                     totalParticles += (cols * drops);
@@ -358,15 +508,17 @@
                 const charIndices = new Float32Array(totalParticles);
                 const dropData = new Float32Array(totalParticles * 3);
                 const sizes = new Float32Array(totalParticles);
+                const slots = new Float32Array(totalParticles * 2);
 
                 let idx = 0;
 
                 layerData.forEach(ld => {
                     const z = -ld.layer * 150;
                     const baseSpeed = Math.max(20.0, this.config.baseDropSpeed - (ld.layer * this.config.speedParallax));
+                    const slotW = ld.spreadX / ld.cols;
 
                     for (let col = 0; col < ld.cols; col++) {
-                        const x = (Math.random() - 0.5) * ld.spreadX;
+                        const x = (col + 0.5 + (Math.random() - 0.5) * 0.7) * slotW - ld.spreadX / 2;
                         const speed = baseSpeed + (Math.random() * 25.0);
                         const offset = Math.random() * 5000.0;
 
@@ -380,6 +532,8 @@
                             dropData[idx * 3] = speed;
                             dropData[idx * 3 + 1] = offset;
                             dropData[idx * 3 + 2] = ld.layer;
+                            slots[idx * 2] = col;
+                            slots[idx * 2 + 1] = ld.cols;
                             idx++;
                         }
                     }
@@ -389,6 +543,7 @@
                 geometry.setAttribute('charIndex', new THREE.BufferAttribute(charIndices, 1));
                 geometry.setAttribute('dropData', new THREE.BufferAttribute(dropData, 3));
                 geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+                geometry.setAttribute('aSlot', new THREE.BufferAttribute(slots, 2));
 
                 this.scene.add(new THREE.Points(geometry, this.material));
             }
@@ -407,7 +562,7 @@
             triggerGlitch(clientX, clientY) {
                 this.glitchStrength = 1.0;
 
-                // --- DOUBLE CLICK WARP DETECTOR ---
+                // --- V5.0 DOUBLE CLICK WARP DETECTOR ---
                 const now = performance.now();
                 if (now - this.lastClickTime < 350) {
                     this.targetFOV = 25; // Trigger aggressive FOV tunnel warp
@@ -458,6 +613,22 @@
 
                         this.targetMouse.x = Math.max(-this.config.maxPanX, Math.min(this.config.maxPanX, rawX));
                         this.targetMouse.y = Math.max(-this.config.maxPanY, Math.min(this.config.maxPanY, rawY));
+
+                        // Send 3D mouse position to shader for repulsion
+                        const ndc = new THREE.Vector3(
+                            ((event.clientX - rect.left) / rect.width) * 2 - 1,
+                            -((event.clientY - rect.top) / rect.height) * 2 + 1,
+                            0.5
+                        );
+                        ndc.unproject(this.camera);
+                        const dir = ndc.sub(this.camera.position).normalize();
+                        const t = -this.camera.position.z / dir.z;
+
+                        this.material.uniforms.uMouseWorld.value.set(
+                            this.camera.position.x + dir.x * t,
+                            this.camera.position.y + dir.y * t
+                        );
+
                     });
 
                     this.container.addEventListener('touchstart', (event) => {
@@ -469,13 +640,31 @@
                         event.preventDefault();
                         if (!this.lastTouch) return;
 
-                        const t = event.touches[0];
-                        const dx = t.clientX - this.lastTouch.x;
-                        const dy = t.clientY - this.lastTouch.y;
-                        this.lastTouch = { x: t.clientX, y: t.clientY };
+                        const touch = event.touches[0];
+                        const rect = this.container.getBoundingClientRect();
+
+                        // Send 3D touch position to shader for repulsion
+                        const ndc = new THREE.Vector3(
+                            ((touch.clientX - rect.left) / rect.width) * 2 - 1,
+                            -((touch.clientY - rect.top) / rect.height) * 2 + 1,
+                            0.5
+                        );
+                        ndc.unproject(this.camera);
+                        const dir = ndc.sub(this.camera.position).normalize();
+                        const dist = -this.camera.position.z / dir.z;
+
+                        this.material.uniforms.uMouseWorld.value.set(
+                            this.camera.position.x + dir.x * dist,
+                            this.camera.position.y + dir.y * dist
+                        );
+
+                        const dx = touch.clientX - this.lastTouch.x;
+                        const dy = touch.clientY - this.lastTouch.y;
+                        this.lastTouch = { x: touch.clientX, y: touch.clientY };
 
                         this.targetMouse.x = Math.max(-this.config.maxPanX, Math.min(this.config.maxPanX, this.targetMouse.x - dx * 0.35));
                         this.targetMouse.y = Math.max(-this.config.maxPanY, Math.min(this.config.maxPanY, this.targetMouse.y - dy * 0.35));
+
                     }, { passive: false });
 
                     this.container.addEventListener('touchend', () => { this.lastTouch = null; });
@@ -502,7 +691,7 @@
                     this.material.uniforms.uGlitch.value = this.glitchStrength;
                 }
 
-                // --- SMOOTH FOV INTERPOLATION ---
+                // --- V5.0 SMOOTH FOV INTERPOLATION ---
                 if (Math.abs(this.camera.fov - this.targetFOV) > 0.1) {
                     this.camera.fov += (this.targetFOV - this.camera.fov) * 0.12;
                     this.camera.updateProjectionMatrix();
@@ -526,21 +715,51 @@
             if (boot) { boot.style.opacity = 0; setTimeout(() => boot.remove(), 300); }
         }, 1200);
 
-        // --- INSTANTIATE WITH CUSTOMIZABLE CONFIG ---
+        // --- CONFIG V6.0  ---
         new MatrixRain('matrix1', {
-            layers: 8, //limit at 11
+            // --- LAYER
+            layers: 8, // Max 11
             volumeHeight: 1200,
             frontLayerSize: 250,
             sizeRatio: 0.6,
-            frontOpacity: 0.1,
+            frontOpacity: 0.2,
+            // --- TAIL
             matrixColor: 0x19e88e, // ghost white "#3ff3ee3" , flash green 0x00ff44 , blue 0x0088ff, purple 0x6600cc, ice 0xee0f0, matrix green 0x00ff64
-            tailLength: 25,
-            tailParallax: 0.5,
-            baseDropSpeed: 380,
+            tailLength: 18,
+            tailParallax: 0.4,
+            tailFade: 0.7,
+            charRerollRate: 1.0,
+            // --- DROP SPEED
+            baseDropSpeed: 280,
             speedParallax: 45,
-            bloomStrength: 2.2,
-            bloomRadius: 0.5,
+            // --- BLOOM
+            bloomStrength: 2,
+            bloomRadius: 0.4,
             bloomThreshold: 0.15,
+            bloomGradientSize: 0.55,
+            // --- MATRIX ERRORS
+            errorRate: 0.001,
+            errorRateGlitchingChar: 0.5,
+            partialErrorRate: 0.01,
+            partialErrorSize: 0.4,
+            errorColor: 0xff0000,
+            // --- DECRYPT HEAD
+            decryptColor: 0x3ff3ee3,
+            decryptStrength: 1.1,
+            decryptMix: 0.8,
+            decryptFlashSize: 0.2,
+            decryptScrambleSize: 1.2,
+            // --- DESTRUCT TAIL
+            destructColor: 0xffffff,
+            destructStrength: 1.8,
+            destructMix: 0.8,
+            destructFlashSize: 1.5,
+            destructAlphaBoost: 0.8,
+            // --- RAIN DENSITY
+            layerRainPerc: 0.7,
+            layerDensityRamp: 1,
+            repulsionRadius: 20,
+            repulsionDepth: 2.5,
         });
 
     </script>
