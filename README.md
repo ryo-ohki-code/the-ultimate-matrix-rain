@@ -134,10 +134,10 @@ Linux screen saver is in final testing and coming soon.
 
 
 ## Release mote
-v7 - The Ultimate Matrix Rain Engine! Coming soon.
-v6 - Added the decrypting head and new settings. This is now a fully customisable Matrix Engine, The Ultimate Matrix Engine! 
-v5 - I start adding what was missing, since I moved to a class structure in v4. Lots of subtle details and calibration.
-v1-4 - This started for fun. We were making a Matrix Rain contest with a friend (who introduced the webgl and the beautiful destruct effect on the contest but in a too heavy way). Then v4 is the begin of a new story, and I decided to release this because I think it a cool work that Matrix Rain lover will approciate.
+- v7 - The Ultimate Matrix Rain Engine! Coming soon.
+- v6 - Added the decrypting head and new settings. This is now a fully customisable Matrix Engine, The Ultimate Matrix Engine! 
+- v5 - I start adding what was missing, since I moved to a class structure in v4. Lots of subtle details and calibration.
+- v1-4 - This started for fun. We were making a Matrix Rain contest with a friend (who introduced the webgl and the beautiful destruct effect on the contest but in a too heavy way). Then v4 is the begin of a new story, and I decided to release this because I think it a cool work that Matrix Rain lover will approciate.
 
 
 ## Licence
